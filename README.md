@@ -11,3 +11,9 @@ I then took some market price data for the cars from MotorTrend.com.
 It's important to note that the market price data was scraped in 2023, whereas the listing
 data was scraped in 2019, so the cars in the listings may have
 depreciated in price since then.
+
+The main questions are:
+
+ - How does mileage impact listing prices?
+ - How does year impact listing prices/market prices?
+ - To what extent are listing prices/market prices related?

@@ -7,22 +7,99 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+brands <- read.csv('data/brands.csv')
+df <- read.csv('data/kijiji_data_fullset.csv')
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r, warning=F, message=F}
+library(dplyr)
+library(ggplot2)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+# The dataframe seems to have many duplicates(multiple listings, problem with scraping?)
+df <- distinct(df)
+nrow(df)
+```
+
+```{r}
+merged <- right_join(x=brands, y=df, 
+by=c('brand', 'model', 'model_year'))
+head(merged)
+nrow(merged)
+```
+```{r}
+# take important columns
+merged <- merged %>% select(brand, model, model_year, Market.Price, list_price, color, condition, body_type, wheel_config, transmission, mileage)
+```
+
+
+```{r}
+library(stringr)
+merged$Market.Price <- str_remove_all(merged$Market.Price, "[$,]")
+```
+
+```{r, warning=F}
+# N.A. values in Market Price indicate the site returned N.A, aka market price is unknown.
+# cast N.A. values to NA as well
+merged$Market.Price <- as.numeric(merged$Market.Price)
+```
+
+```{r}
+# I'm 99% sure the market prices are in USD, when comparing to other sites like AutoTrader.net etc. so I will add a CAD market price column
+conversion_rate <- 1.35
+merged$Market.Price.CAD <- merged$Market.Price * conversion_rate
+```
+
+```{r}
+# I think I will remove entries where listing price is 0. This is usually done on sites to show up first when customers sort by price, or sometimes price isn't listed. Either way, these people definitely aren't selling for free.
+merged <- merged %>% filter(list_price != 0)
+```
+
+```{r}
+# we have to remove rows with missing market values.
+# we can't impute the data in any way because it's 2023 estimates, and market values should vary by year and stuff.
+# no sensible way to impute.
+merged <- merged %>% filter(!is.na(Market.Price.CAD))
+nrow(merged)
+```
+
+
+```{r}
+# to create broader categories between cars i'll introduce a new categorical variable
+
+ggplot(merged, aes(x=Market.Price.CAD)) +
+  geom_histogram(bins=30)
+
+summary(merged$Market.Price.CAD)
+```
+```{r}
+quants <- quantile(merged$Market.Price.CAD, probs=c(0.25, 0.75))
+merged <- merged %>% mutate(price_range = case_when(
+  Market.Price.CAD < quants[1] ~ "low",
+  Market.Price.CAD < quants[2] ~ "medium",
+  TRUE ~ "high"
+))
+```
+
+```{r}
+ggplot(merged) +
+  geom_point(aes(x=Market.Price.CAD, y=list_price)) +
+  geom_abline(slope=1, intercept=0)
+
+ggplot(merged, aes(x=mileage, y=list_price)) +
+  geom_point() +
+  geom_smooth(method=lm, formula=y~x, se=F) +
+  facet_wrap(~price_range)
+```
+
+```{r}
+ggplot(merged, aes(x=model_year, y=Market.Price.CAD)) +
+  geom_jitter()
+
+ggplot(merged, aes(x=model_year, 
+                   y=list_price,
+                   color=condition)) +
+  geom_jitter()
+```
