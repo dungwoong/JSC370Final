@@ -14,6 +14,4 @@ depreciated in price since then.
 
 The main questions are:
 
- - How does mileage impact listing prices?
- - How does year impact listing prices/market prices?
- - To what extent are listing prices/market prices related?
+What is the relationship between mileage, year, wheel configuration, predicted market value, and car listing prices?

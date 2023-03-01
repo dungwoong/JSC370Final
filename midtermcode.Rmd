@@ -31,7 +31,7 @@ nrow(merged)
 ```
 ```{r}
 # take important columns
-merged <- merged %>% select(brand, model, model_year, Market.Price, list_price, color, condition, body_type, wheel_config, transmission, mileage)
+merged <- merged %>% select(brand, model, model_year, Market.Price, list_price, condition, body_type, wheel_config, transmission, mileage)
 ```
 
 
@@ -64,6 +64,33 @@ merged <- merged %>% filter(list_price != 0)
 merged <- merged %>% filter(!is.na(Market.Price.CAD))
 nrow(merged)
 ```
+```{r}
+# further checks
+
+# no more NA values
+colSums(is.na(merged))
+
+summary(merged)
+```
+
+```{r}
+# we need to map 4x4 to AWD and '' to Other for
+# wheel_config
+
+merged = merged %>% mutate(wheel_config=case_when(
+  wheel_config == '' ~ 'Other',
+  wheel_config == 'Other' ~ 'Other',
+  wheel_config == 'Front-wheel drive (FWD)' ~ 'FWD',
+  wheel_config == 'Rear-wheel drive (RWD)' ~ 'RWD',
+  TRUE ~ 'AWD'
+))
+```
+
+```{r}
+merged$transmission = ifelse(merged$transmission == '', 'Other', merged$transmission)
+```
+
+
 
 
 ```{r}
@@ -75,13 +102,41 @@ ggplot(merged, aes(x=Market.Price.CAD)) +
 summary(merged$Market.Price.CAD)
 ```
 ```{r}
-quants <- quantile(merged$Market.Price.CAD, probs=c(0.25, 0.75))
-merged <- merged %>% mutate(price_range = case_when(
-  Market.Price.CAD < quants[1] ~ "low",
-  Market.Price.CAD < quants[2] ~ "medium",
-  TRUE ~ "high"
+# quants <- quantile(merged$Market.Price.CAD, probs=c(0.25, 0.75))
+# merged <- merged %>% mutate(price_range = case_when(
+#   Market.Price.CAD < quants[1] ~ "low",
+#   Market.Price.CAD < quants[2] ~ "medium",
+#   TRUE ~ "high"
+# ))
+```
+
+```{r}
+# get_price_range = function (price, year) {
+#   tmp <- merged %>% filter(model_year==year)
+#   qts <- quantile(tmp$Market.Price.CAD, probs=c(0.25, 0.75))
+#   out = ifelse(price < qts[1], "low", ifelse(price < qts[2], "medium", "high"))
+#   return(out)
+# }
+
+yearly_price_quantiles <- merged %>% group_by(model_year) %>% 
+  summarise(yearly_first_q = quantile(Market.Price.CAD, probs=0.25),
+            yearly_third_q = quantile(Market.Price.CAD, probs=0.75))
+
+merged = inner_join(x=merged, y=yearly_price_quantiles)
+
+merged = merged %>% mutate(price_range = case_when(
+  Market.Price.CAD < yearly_first_q ~ 'low',
+  Market.Price.CAD < yearly_third_q ~ 'medium',
+  TRUE ~ 'high'
 ))
 ```
+
+```{r}
+merged %>% group_by(model_year, price_range) %>% 
+  summarise(n=n()) %>% 
+  arrange(model_year, price_range)
+```
+
 
 ```{r}
 ggplot(merged) +
@@ -95,11 +150,13 @@ ggplot(merged, aes(x=mileage, y=list_price)) +
 ```
 
 ```{r}
-ggplot(merged, aes(x=model_year, y=Market.Price.CAD)) +
+ggplot(merged, aes(x=model_year, 
+                   y=Market.Price.CAD, 
+                   color=price_range)) +
   geom_jitter()
 
 ggplot(merged, aes(x=model_year, 
                    y=list_price,
-                   color=condition)) +
+                   color=price_range)) +
   geom_jitter()
 ```

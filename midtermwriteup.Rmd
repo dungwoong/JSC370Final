@@ -1,0 +1,330 @@
+---
+title: "JSC370 Midterm"
+author: "Kevin W"
+output: html_document
+---
+
+
+# Introduction
+
+I will be investigating the used car market. The main question is as follows:
+
+**What is the relationship between mileage, year, wheel configuration, body type, predicted market value(2023), and car listing prices on Kijiji(2019)?**
+
+<!-- There are a few specific areas that I want to analyze: -->
+
+ <!-- - How does predicted market value relate to car listing prices? -->
+ <!-- - It's well known that cars depreciate at an exponential rate every year. Is the amount of depreciation year-over-year associated with other factors, such as mileage, the brand/price range of a car, or other configurations of the vehicle? -->
+ <!-- - How are other categorical variables such as wheel configuration(AWD, FWD, etc.), year and mileage associated with the perceived value of vehicles? -->
+
+My hypothesis is that the price of most cars decay exponentially at an annual rate, that is related to factors such as the price range of the car(ie. luxury vehicles may decay at different rates compared to other vehicles). 
+
+Decay in price, mileage and time may be highly correlated, and other factors such as wheel configuration and body type may affect both the listing price of a car, and the decay rate.
+
+# Methods
+
+The car listings dataset was sourced from [this github page](https://github.com/Pyligent/Car_ETL_PROJECT), and contains information for around 1000 unique Kijiji listings in the Greater Toronto Area. The data was acquired in 2019 through web scraping.
+
+```{r, echo=F, results='hide'}
+brands <- read.csv('data/brands.csv')
+df <- read.csv('data/kijiji_data_fullset.csv')
+```
+
+```{r, warning=F, message=F, echo=F, results='hide'}
+library(dplyr)
+library(ggplot2)
+```
+
+```{r, echo=F, results='hide'}
+# The dataframe seems to have many duplicates(multiple listings, problem with scraping?)
+df <- distinct(df)
+nrow(df)
+```
+
+Using the `brand`, `model` and `model_year` columns of the car listings dataset, I attempted to scrape the market price for each car from [MotorTrend.com](motortrend.com), to augment the data. MotorTrend.com gives a "clean retail price" or "market price" for many cars, representing a "reasonable asking price" for cars with clean history, and no defects/damage.
+
+Note that the market price was obtained in 2023, and may be lower than the listing prices obtained in 2019 due to depreciation. However, with prior knowledge that the depreciation rate should be fixed for different categories of cars and can be adjusted for, I believe relationships between these variables are still worth investigating.
+
+### Data exploration
+
+I used summary tables to explore each variable, to find and remove nonsensical or missing values. I used plotting and linear regression to further explore distributions of individual variables, and to explore relationships in the data.
+
+### Data Wrangling
+
+I removed columns that I'm not investigating, and converted the remaining columns to the correct data types. Cross-referencing with other sites, I believe MotorTrend market prices are given in CAD, so I did not perform any currency conversion.
+
+I then removed listings with a listing price of 0. Kijiji sellers will often list a price of 0 or 'Please Contact' to attract buyers, which does not reflect the actual asking price.
+
+Since market prices are scraped in 2023 and the dataset is from 2019, there is no reasonable way to impute the missing values. Market price is an important variable in this investigation, so I decided to remove all rows with missing market prices.
+
+```{r, echo=F, results='hide'}
+# join data with motortrend market prices
+merged <- right_join(x=brands, y=df, 
+by=c('brand', 'model', 'model_year'))
+head(merged)
+nrow(merged)
+```
+
+```{r, echo=F, results='hide'}
+# take important columns
+merged <- merged %>% select(brand, model, model_year, Market.Price, list_price, condition, body_type, wheel_config, transmission, mileage)
+```
+
+
+```{r, echo=F, results='hide'}
+# remove $ and , from market price strings
+library(stringr)
+merged$Market.Price <- str_remove_all(merged$Market.Price, "[$,]")
+```
+
+```{r, warning=F, echo=F, results='hide'}
+# N.A. values in Market Price indicate the site returned N.A, aka market price is unknown.
+# cast all market prices to numeric, cast other values to NA
+merged$Market.Price <- as.numeric(merged$Market.Price)
+```
+
+```{r, echo=F, results='hide'}
+# I'm 99% sure the market prices are in USD, when comparing to other sites like AutoTrader.net etc. so I will add a CAD market price column
+conversion_rate <- 1
+merged$Market.Price.CAD <- merged$Market.Price * conversion_rate
+```
+
+```{r, echo=F, results='hide'}
+# I think I will remove entries where listing price is 0. This is usually done on sites to show up first when customers sort by price, or sometimes price isn't listed. Either way, these people definitely aren't selling for free.
+merged <- merged %>% filter(list_price != 0)
+```
+
+```{r, echo=F, results='hide'}
+# we have to remove rows with missing market values.
+# we can't impute the data in any way because it's 2023 estimates, and market values should vary by year.
+merged <- merged %>% filter(!is.na(Market.Price.CAD))
+nrow(merged)
+```
+```{r, echo=F, results='hide'}
+# further checks
+
+# no more NA values
+colSums(is.na(merged))
+
+# summary check
+summary(merged)
+```
+
+I then mapped blank values of wheel and transmission configuration to "Other," because I did not want to remove missing values. "Other" is already an existing category in the data, so I decided to cast all unknown values to that.
+
+```{r, echo=F, results='hide'}
+# we need to map 4x4 to AWD and '' to Other for
+# wheel_config
+
+merged = merged %>% mutate(wheel_config=case_when(
+  wheel_config == '' ~ 'Other',
+  wheel_config == 'Other' ~ 'Other',
+  wheel_config == 'Front-wheel drive (FWD)' ~ 'FWD',
+  wheel_config == 'Rear-wheel drive (RWD)' ~ 'RWD',
+  wheel_config == '4 x 4' ~ '4x4',
+  TRUE ~ 'AWD'
+))
+# merged$wheel_config = ifelse(merged$wheel_config == '', 'Other', merged$wheel_config)
+```
+
+```{r, echo=F, results='hide'}
+# same idea for transmission.
+merged$transmission = ifelse(merged$transmission == '', 'Other', merged$transmission)
+```
+
+I also created a new `price range` variable that indicates if the market price of a car which had a market price below the 25th percentile, between the 25-75th percentile or above the 75th percentile, comparing to other recorded listings **in the same year**. This variable is intended to roughly indicate whether a vehicle is a "luxury vehicle" or not, and takes the values 'low,' 'medium,' and 'high.'
+
+```{r, echo=F, results='hide', message=F}
+# create the price quantiles for every year, to make a new price_range variable.
+yearly_price_quantiles <- merged %>% group_by(model_year) %>% 
+  summarise(yearly_first_q = quantile(Market.Price.CAD, probs=0.25),
+            yearly_third_q = quantile(Market.Price.CAD, probs=0.75))
+
+merged = inner_join(x=merged, y=yearly_price_quantiles)
+
+merged = merged %>% mutate(price_range = case_when(
+  Market.Price.CAD < yearly_first_q ~ 'low',
+  Market.Price.CAD < yearly_third_q ~ 'medium',
+  TRUE ~ 'high'
+))
+```
+
+```{r, echo=F, results='hide'}
+# select vars relevant to the investigation
+merged <- merged %>% select(brand, 
+                            model, 
+                            model_year, 
+                            list_price, 
+                            mileage,
+                            body_type, 
+                            wheel_config, 
+                            Market.Price.CAD, 
+                            price_range)
+```
+
+The variables in the cleaned dataset are:
+
+ - Brand(eg. Honda)
+ - Model(eg. Civic)
+ - Model year(eg. 2001)
+ - Listing price(CAD)
+ - Mileage(Miles)
+ - Body type(eg. convertible, coupe, etc.)
+ - Wheel configuration(AWD, FWD, RWD, other)
+ - Market price(from MotorTrend.com, in CAD)
+ - Price range(low, medium, high, discussed earlier)
+ 
+I performed further checks for anomalies and nonsensical values, but found nothing.
+ 
+# Preliminary Results
+
+```{r, echo=F, message=F}
+ggplot(merged, aes(x=Market.Price.CAD, 
+                   y=list_price)) +
+  theme_minimal() +
+  geom_point(aes(color=model_year)) +
+  geom_smooth(formula=y~x, method=lm, se=F) +
+  labs(title="Market price vs list price for GTA listings",
+       x="Market price(CAD)",
+       y="Listing price(CAD)",
+       color="Year")
+```
+
+```{r, echo=F}
+mod <- lm(merged$list_price ~ merged$Market.Price.CAD)
+sum <- summary(mod)
+```
+
+Linear regression estimates are given below:
+
+Estimate | Value
+---------|------
+Intercept | `r sum$coefficients[1]`
+Slope | `r sum$coefficients[2]`
+
+The above graph shows the linear relationship between the MotorTrend market price and Kijiji listing price.
+The coefficients of the fitted linear regression suggest that the 2019 listing price is, on average, 2.1 times the 2023 market price, minus ~4500 dollars.
+
+This suggests in the last 4 years, used car prices have decayed by around 50%, on average.
+
+The scatterplot suggests a strong linear association between market price and listing prices, and the fitted regression supports the hypothesis that all of the cars have a relatively fixed depreciation rate, allowing us to adjust for it quite easily.
+
+The scatter of points is cone shaped. This may be because different makes and models have different depreciation rates. In addition, it may be because factors that affect the price such as damages and car history, or even perceived value, is usually proportional to the price of the car(eg. damages on an expensive car will lower its perceived value more on a cheaper car). 
+
+Finally, we see that cars with higher prices are typically from more recent years. This suggests a relationship between year and "value" of a vehicle, supporting the idea that vehicle prices depreciate over time. However, further analysis must be done to infer the nature of the depreciation.
+
+```{r, echo=F, message=F}
+ggplot(merged, aes(x=model_year, 
+                   y=list_price)) +
+  geom_jitter(aes(color=price_range)) +
+  geom_smooth(formula=y~x,
+              method=loess,
+              se=F) +
+  theme_minimal() +
+  labs(title="Jittered listing price by year",
+       x="Model year",
+       y="Listing price(CAD)",
+       color="Price Range")
+
+# ggplot(merged, aes(x=model_year, 
+#                    y=list_price)) +
+#   geom_jitter() +
+#   geom_smooth(formula=y~x,
+#               method=loess,
+#               se=F) +
+#   facet_wrap(~price_range) +
+#   theme_minimal() +
+#   labs(title="Jittered listing price by year",
+#        x="Model year",
+#        y="Listing price(CAD)",
+#        color="Price Range") +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+These charts show that the listing prices of cars is typically higher for more recent models. 
+
+Separating cars based on their price range, we see that the decrease in price for older cars occurs at a higher rate for cars among the top 25th percentile of prices every year, compared to less relatively expensive cars. This supports the idea that the price decay is based on the starting price of the car.
+
+The curve of the line suggests that the decay may be exponential, although there are other viable explanations and this observation may be biased by prior knowledge.
+
+```{r, echo=F, message=F}
+ggplot(merged, aes(x=model_year, 
+                   y=Market.Price.CAD)) +
+  geom_jitter(aes(color=price_range)) +
+  geom_smooth(formula=y~x,
+              method=loess,
+              se=F) +
+  theme_minimal() +
+  labs(title="Jittered market price by year",
+       x="Model year",
+       y="Market price(CAD)",
+       color="Price Range")
+```
+
+This plot of market price by model year corroborates previous findings and shows a more well-defined curve of prices over time. Note that price range was defined based on quantiles of market price per year, which is why the points are perfectly stacked on top of each other by color.
+
+We see that the green, "low price range," points, are close together and market price seems strongly associated with model year, whereas among the "high price range" points, the points form a cone shape, indicating there is more variability among prices over the years. 
+
+This supports the hypothesis that the decay schedule is exponential, thus cars initially worth more observe larger decreases in price over time compared to cars worth less.
+
+In addition, lower-cost vehicles may have a higher lifespan and lower maintenance costs compared to expensive luxury vehicles. Thus, luxury vehicles may decrease in price faster because of the shorter lifespan.
+
+```{r, echo=F}
+ggplot(merged, aes(x=wheel_config, y=list_price)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title="Distribution of listing prices by wheel configuration",
+       x="Wheel configuration",
+       y="Listing price(CAD)")
+```
+
+This plot suggests that wheel configuration may be significantly associated with listing prices.
+
+The chart suggests that front wheel drive(FWD) cars typically have low listing prices, whereas other cars such as rear and all wheel drive cars, tend to have higher prices. 4x4 cars seem to have the highest median listing prices among all categories.
+
+However, this may be because rear wheel drive cars tend to be sports cars, which are more expensive, and AWD/4x4 cars tend to be SUVs or vans, which are more expensive than cars, which make up most of front wheel drive vehicles. Thus, the type of vehicle may be confounding the results.
+
+```{r, echo=F}
+ggplot(merged, aes(x=body_type, y=list_price)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title="Distribution of listing prices by body type",
+       x="Body type",
+       y="Listing price(CAD)") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+We see a similar result for different body types, supporting the previous conclusion. convertibles, coupes and pickup trucks have the highest median listing price among all body types, whereas sedans and hatchbacks have the lowest median listing prices.
+
+```{r, echo=F}
+merged$price_diff <- merged$list_price - merged$Market.Price.CAD
+
+ggplot(merged, aes(x=mileage, y=price_diff)) +
+  geom_point(aes(color=model_year)) +
+  geom_smooth(method=loess, formula=y~x, se=F) +
+  facet_wrap(~price_range) +
+  theme_minimal() +
+  labs(title="Mileage vs listing/market price difference\n for cars in different price ranges",
+       x="Mileage",
+       y="Listing price minus market price(CAD)",
+       color="Year") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+It's common knowledge that higher mileage is associated with lower prices in used cars. Thus, I decided to plot the effect of mileage on the difference between the listing price of a used car with its market price.
+
+We see that higher mileage is associated with lower listing prices, when compared to the market price of a car. We see a low spread of prices among cars in the "low" price range, and a higher spread among the other price ranges.
+
+These plots are similar to the previous plots, suggesting that the decay in price associated with higher mileage is proportional to the initial price of each vehicle.
+
+However, we see that year seems highly correlated with mileage, by the color of the points, suggesting multicollinearity and confounding may be an issue in the investigation.
+
+However, we see a few observations for older models, that have low prices despite having low mileage. This suggests that the year of the car model is still influential of the market/listing price, regardless of mileage.
+
+# Summary
+
+So far, I've found a lot of evidence supporting the hypothesis that the listing and market prices of used cars are highly correlated, and that they decay at an exponential rate based on other factors such as the year a car was made(compared to the current year), and the mileage of a car.
+
+I've also found evidence that attributes such as car type and wheel configuration are associated with listing prices. For example, all and rear wheel drive vehicles usually have higher listing prices compared to front wheel drive vehicles.
+
+However, multicollinearity and confounding is a large issue in the data. For example, model year is associated with mileage. In addition, wheel configuration is associated with body type.
