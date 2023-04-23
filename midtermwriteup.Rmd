@@ -7,9 +7,13 @@ output: html_document
 
 # Introduction
 
-I will be investigating the used car market. The main question is as follows:
+Transportation is the life-blood of civilization. For many people, the two largest purchases in their lives will be a house and a car. However, not all cars are built equally and, from personal experience, many car salesmen will not eagerly disclose these inequalities. Thus, I will be investigating the used car market for my project, thinking from the perspective of a prospective buyer and from a used car dealership.
+
+The main question is as follows:
 
 **What is the relationship between mileage, year, wheel configuration, body type, predicted market value(2023), and car listing prices on Kijiji(2019)?**
+
+Specifically, from a dealership's perspective, I want to analyze the depreciation of car prices with time and other factors, as well as find and evaluate many aspects that are associated with a car's price.
 
 <!-- There are a few specific areas that I want to analyze: -->
 
@@ -41,7 +45,7 @@ df <- distinct(df)
 nrow(df)
 ```
 
-Using the `brand`, `model` and `model_year` columns of the car listings dataset, I attempted to scrape the market price for each car from [MotorTrend.com](motortrend.com), to augment the data. MotorTrend.com gives a "clean retail price" or "market price" for many cars, representing a "reasonable asking price" for cars with clean history, and no defects/damage.
+Using the `brand`, `model` and `model year` attributes from the car listings dataset, I attempted to scrape the market price for each car from [MotorTrend.com](motortrend.com), to augment the data. MotorTrend.com gives a "clean retail price" or "market price" for many cars, representing a "reasonable asking price" for cars with clean history, and no defects/damage.
 
 Note that the market price was obtained in 2023, and may be lower than the listing prices obtained in 2019 due to depreciation. However, with prior knowledge that the depreciation rate should be fixed for different categories of cars and can be adjusted for, I believe relationships between these variables are still worth investigating.
 
@@ -51,11 +55,11 @@ I used summary tables to explore each variable, to find and remove nonsensical o
 
 ### Data Wrangling
 
-I removed columns that I'm not investigating, and converted the remaining columns to the correct data types. Cross-referencing with other sites, I believe MotorTrend market prices are given in CAD, so I did not perform any currency conversion.
+I removed columns that I'm not investigating, such as links and vehicle identification numbers, and converted the remaining columns to the correct data types. Cross-referencing with other sites, I believe MotorTrend market prices are given in CAD, so I did not perform any currency conversion.
 
 I then removed listings with a listing price of 0. Kijiji sellers will often list a price of 0 or 'Please Contact' to attract buyers, which does not reflect the actual asking price.
 
-Since market prices are scraped in 2023 and the dataset is from 2019, there is no reasonable way to impute the missing values. Market price is an important variable in this investigation, so I decided to remove all rows with missing market prices.
+Since market prices are scraped in 2023 and the dataset is from 2019, there is no reasonable way to impute the missing values in that column. Market price is an important variable in this investigation, so I decided to remove all rows with missing market prices.
 
 ```{r, echo=F, results='hide'}
 # join data with motortrend market prices
@@ -175,8 +179,123 @@ The variables in the cleaned dataset are:
  - Price range(low, medium, high, discussed earlier)
  
 I performed further checks for anomalies and nonsensical values, but found nothing.
+
+Here are some example rows from the raw data:
+
+```{r, warning=F, echo=F, message=F}
+# https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
+library(kableExtra)
+merged %>% head %>% 
+  kbl() %>% 
+  kable_styling()
+```
  
 # Preliminary Results
+
+## Univariate summaries
+```{r, echo=F}
+merged %>% count(brand, sort=T) %>% 
+  mutate(brand = forcats::fct_reorder(brand, n)) |>
+  head(10) %>% 
+  ggplot(aes(x=brand, y=n)) + 
+  geom_col() +
+  theme_minimal() +
+  coord_flip() +
+  labs(title="Top 10 most frequent car brands",
+       x = "Brand",
+       y = "Count")
+```
+
+Here are some of the most frequent brands, most of which are well known. We see that many of the top brands manufacture trucks and other large vehicles, such as Ford, Chevrolet, Dodge and Ram.
+
+```{r, echo=F}
+merged %>% 
+  ggplot(aes(x=model_year)) +
+  geom_histogram(bins=10) +
+  theme_minimal() +
+  labs(title="Histogram of model years",
+       x="Model year",
+       y="Count")
+```
+
+We see that most listings are for cars from recent years, with a large number between 2015 and 2019.
+
+```{r, echo=F}
+merged %>% 
+  ggplot(aes(x=list_price)) +
+  geom_histogram(bins=20) +
+  theme_minimal() +
+  labs(title="Histogram of prices",
+       x="Model year",
+       y="Count")
+```
+
+We see most cars are listed in the 0-30000CAD range, although some listings have prices higher than 100kCAD. This is consistent with the fact that most of the listings are for used cars, although some of the listings may be for luxury vehicles that cost significantly more than other cars.
+
+```{r, echo=F}
+merged %>% 
+  ggplot(aes(x=mileage)) +
+  geom_histogram(bins=20) +
+  theme_minimal() +
+  labs(title="Histogram of mileage",
+       x="Mileage",
+       y="Count")
+```
+
+We see that the dataset contains a significant amount of new vehicles(with low mileage). Mileage seems to be bimodal, with a second mode around 90-100000 miles.
+
+We see that many of the predictors, and the response are skewed, so we must keep that in mind when fitting and assessing models.
+
+```{r, echo=F}
+merged %>% count(body_type, sort=T) %>% 
+  mutate(body_type = forcats::fct_reorder(body_type, n)) |>
+  head(10) %>% 
+  ggplot(aes(x=body_type, y=n)) + 
+  geom_col() +
+  theme_minimal() +
+  coord_flip() +
+  labs(title="Frequency of car types",
+       x = "Type",
+       y = "Count")
+```
+
+We see that the most common types or cars are sedans and SUV/crossover(a car that blends characteristics between other cars and an SUV). This is important to note when forming conclusions in the later sections, because sedans and SUVs naturally have different price points due to their size.
+
+```{r, echo=F}
+merged %>% count(wheel_config, sort=T) %>% 
+  mutate(wheel_config = forcats::fct_reorder(wheel_config, n)) |>
+  head(10) %>% 
+  ggplot(aes(x=wheel_config, y=n)) + 
+  geom_col() +
+  theme_minimal() +
+  coord_flip() +
+  labs(title="Frequency of Wheel configurations",
+       x = "Type",
+       y = "Count")
+```
+
+Note that the two most common wheel configurations are FWD and AWD, common in sedans and SUV/trucks. This suggests that the body type and wheel configuration of a car may be correlated, and is important to keep in mind.
+
+I did not explore the distribution of market price because it is similar to listing price, which is evident in the bivariate plots.
+
+### More summary statistics
+```{r, echo=F, warning=F, message=F}
+summary_table <- merged %>%
+  select(list_price, Market.Price.CAD, mileage) %>%
+  summarise(
+    Mean = c(mean(list_price), mean(Market.Price.CAD), mean(mileage)),
+    Median = c(median(list_price), median(Market.Price.CAD), median(mileage)),
+    SD = c(sd(list_price), sd(Market.Price.CAD), sd(mileage))
+  ) 
+summary_table$Variable = c("Listing Price(CAD)", "Market Price(CAD)", "Mileage(Mi)")
+
+summary_table %>% 
+  select(Variable, Mean, Median, SD) %>% 
+  kbl() %>% 
+  kable_styling()
+```
+
+## Analysis results
 
 ```{r, echo=F, message=F}
 ggplot(merged, aes(x=Market.Price.CAD, 
@@ -207,7 +326,7 @@ The coefficients of the fitted linear regression suggest that the 2019 listing p
 
 This suggests in the last 4 years, used car prices have decayed by around 50%, on average.
 
-The scatterplot suggests a strong linear association between market price and listing prices, and the fitted regression supports the hypothesis that all of the cars have a relatively fixed depreciation rate, allowing us to adjust for it quite easily.
+The scatterplot suggests a strong linear association between market price and listing prices, and the fitted regression supports the hypothesis that all of the cars have a similar depreciation rate, allowing us to adjust for it quite easily.
 
 The scatter of points is cone shaped. This may be because different makes and models have different depreciation rates. In addition, it may be because factors that affect the price such as damages and car history, or even perceived value, is usually proportional to the price of the car(eg. damages on an expensive car will lower its perceived value more on a cheaper car). 
 
@@ -270,6 +389,22 @@ This supports the hypothesis that the decay schedule is exponential, thus cars i
 In addition, lower-cost vehicles may have a higher lifespan and lower maintenance costs compared to expensive luxury vehicles. Thus, luxury vehicles may decrease in price faster because of the shorter lifespan.
 
 ```{r, echo=F}
+merged %>% filter(brand %in% c("Ford", "Chevrolet", "Dodge", "BMW", "Ram")) %>% 
+ggplot(aes(x=model_year, y=Market.Price.CAD, color=brand)) +
+  geom_point() +
+  geom_smooth(method='lm', formula=y~poly(x, 2, raw=T), se=F) +
+  theme_minimal() +
+  labs(title="Market price per year for top 5 car brands in dataset",
+       x="Model year",
+       y="Market price(CAD)")
+```
+
+We can roughly inspect the changes in price over the year for cars of different brands. Note that observations for a single brand may include different types of cars(sedans, SUVs) that have different price points, influencing the fitted line.
+
+However, the line shows that brand can be a useful predictor of depreciation. For example, BMW cars rank relatively low in terms of maintenance costs, and are quite expensive to own. This fact may be reflected in the fact that the fitted line for BMWs has a much higher slope that some of the other cars, such as Dodge, Ford and RAM. Since different manufacturers have varying approaches to making vehicles, and probably have common features and problems with their vehicles, there may be an interaction between other variables such as mileage and body type, with brand.
+
+
+```{r, echo=F}
 ggplot(merged, aes(x=wheel_config, y=list_price)) +
   geom_boxplot() +
   theme_minimal() +
@@ -328,3 +463,5 @@ So far, I've found a lot of evidence supporting the hypothesis that the listing 
 I've also found evidence that attributes such as car type and wheel configuration are associated with listing prices. For example, all and rear wheel drive vehicles usually have higher listing prices compared to front wheel drive vehicles.
 
 However, multicollinearity and confounding is a large issue in the data. For example, model year is associated with mileage. In addition, wheel configuration is associated with body type.
+
+The next step is to find a way to investigate the central question in a way that would be meaningful to a dealership or prospective buyer. Currently, I have only found evidence in supporting prior knowledge, and I aim to quantify my findings and search for useful insights in the data in the rest of the project.
