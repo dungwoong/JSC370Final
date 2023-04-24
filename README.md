@@ -15,3 +15,9 @@ depreciated in price since then.
 The main questions are:
 
 What is the relationship between mileage, year, wheel configuration, predicted market value, and car listing prices?
+
+# Files
+
+ - [FinalWriteup.pdf](FinalWriteup.pdf) is the final writeup
+ - [FinalWriteup.Rmd](FinalWriteup.Rmd) is the code for the final writeup
+ - data is in the data/ folder
