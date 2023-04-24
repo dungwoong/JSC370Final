@@ -182,7 +182,9 @@ Finally, I added a new `price range` variable that indicated if the car mentione
 
 ## Plots
 
-I used plotting to investigate the data. Overall, I generated four figures, given in the "methods and results" section of the project webpage under the heading "Market Price Visualizations." I then fit a linear model and a random forest, to further understand how the data can be used to predict listing prices. I will give an analysis of each figure, and then the results of each model.
+I used plotting to investigate the data. Overall, I generated four figures, given in the "methods and results" section of the project webpage under the heading "Market Price Visualizations." Some of the plots presenting main results will be repeated below, but the interactive visualizations are given on the webpage and may be more informative.
+
+<!-- I then fit a linear model and a random forest, to further understand how the data can be used to predict listing prices. I will give an analysis of each figure, and then the results of each model. -->
 
 
 ### Figure 1: Market vs Listing Price
@@ -200,6 +202,22 @@ The model suggests perceived value of most used cars has almost halved since 201
 The cone shape of the plot suggests the variance in listing prices is associated with the market price of a car. It is common knowledge that factors affecting price such as depreciation and damage are all scaled to some base price of a new, accident-free vehicle(eg. an expensive vehicle would have expensive repairs, and the value would decay proportional to the original price)
 
 To support the previous claim, we see that on the log scale, the plot has relatively constant variance across market price values. This suggests that the ratio of listing price to market price is somewhat constant across cars of all price ranges.
+
+```{r}
+tmp <- merged %>% mutate(logmp = log(Market.Price.CAD),
+                         loglp = log(list_price))
+
+p <- ggplot(tmp, aes(x=logmp, y=loglp)) +
+  geom_point(size=0.4, aes(color=price_range)) +
+  geom_smooth(method=lm, se=F, linewidth=0.2) + 
+  labs(title="Logged market price vs logged listing price, by price range",
+           x="Logged MotorTrend market price(CAD)",
+           y="Logged listing price(CAD)",
+       color="Price range") +
+  theme_minimal()
+
+p
+```
 
 In conclusion, Figure 1 suggests that price changes in listings are proportional to each car's "initial price," given upon production. Car listing prices are thus correlated with estimated market price. Further factors must be considered if we want to explain remaining variance in the listing prices.
 
@@ -233,6 +251,27 @@ This suggests that on average, a car's market value will be $e^{-0.146} = 0.864$
 
 When considering a car purchase, knowing approximately what is available within a certain price range is important. Analyzing the price distributions of cars with different body types and wheel configurations can help us understand what cars are available at different budget points, a useful consideration when a specific function is required(eg. a truck for transporting equipment, or an all wheel drive vehicle for snowy weather).
 
+```{r}
+p <- merged %>% ggplot(aes(y=list_price, x=body_type)) +
+  geom_boxplot() +
+  labs(title="Listing price vs Body type",
+       y="Listing price(CAD)",
+       x="Body Type") +
+  theme_minimal()
+
+p
+```
+
+```{r}
+p <- merged %>% ggplot(aes(y=list_price, x=wheel_config)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(y="Listing Price(CAD)",
+       x="Wheel configuration",
+       title="Listing price vs Wheel configuration")
+p
+```
+
 The visualizations suggest cars with different body types have varying listing price distributions. This makes intuitive sense, as larger vehicles will probably have higher prices compared to smaller cars. We see that pickup trucks, convertibles, and coupes have the highest price.
 
 Overall, this suggests that body type may associated with pricing, and may be a good indicator for predicting car price. In addition to body type, wheel configuration also seems to be associated with price. We see 4x4 vehicles have the highest median price.
@@ -240,6 +279,22 @@ Overall, this suggests that body type may associated with pricing, and may be a 
 ### Figure 4: Comparing market price decay with miscellaneous factors
 
 This visualization compares logged market price by year, separated by wheel configuration.
+
+```{r}
+p <- merged %>% ggplot(aes(x=model_year, 
+                        y=list_price, 
+                        color=wheel_config)) +
+  geom_point(size=0.4) +
+  geom_smooth(method=lm, formula=y~poly(x, 1, raw=T), se=F, linewidth=0.2) +
+  labs(title="Logged market price vs model year, by wheel configuration",
+       x="Model Year",
+       y="Logged Market Price(CAD)",
+       color="Wheel Configuration") +
+  scale_y_log10(labels=scales::comma) +
+  theme_minimal()
+
+p
+```
 
 The plot suggests that cars that provide utility, such as trucks, may observe lower decay rates compared to other, more "generic" vehicles. In addition, luxury vehicles and sports cars, which are often rear wheel drive, may observe lower decay rates due to the social status associated with the vehicle.
 
