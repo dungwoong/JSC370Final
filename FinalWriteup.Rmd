@@ -318,9 +318,7 @@ p <- merged %>% ggplot(aes(x=model_year,
 p
 ```
 
-The plot suggests that cars that provide utility, such as trucks, may observe lower decay rates compared to other, more "generic" vehicles such as cars and vans. In addition, luxury vehicles and sports cars, which are often rear wheel drive, may observe lower decay rates due to the social status associated with the vehicle.
-
-However, price decay is still quite similar between different vehicle classes, and the data has a lot of noise. I fit least median squares regression lines for price vs year, separated by wheel configuration and body type. The numerical results given below show that Coupes and pickup trucks have the lowest slope estimate, which supports our previous conclusion. However, Coupe has a negative coefficient which may be the result of outliers in the data, and we see that convertibles actually have the highest slope estimate, contradicting our earlier hypothesis.
+I fit least median squares regression lines for price vs year, separated by wheel configuration and body type.
 
 ```{r}
 library(MASS)
@@ -353,6 +351,14 @@ kable(btype_df, col.names=c("Body Type", "Slope Coefficient"),
       caption="Fitted slope coefficients for log(listing price) vs year, by body type") %>% 
   kable_styling(latex_options = "HOLD_position")
 ```
+
+The plot, as well as the numerical statistics, suggests that trucks, that are usually 4x4 vehicles, and sports cars, which are usually RWD vehicles, observe lower decay rates than more "generic" vehicles such as cars and vans. We see that trucks and coupe(2 door) vehicles have the lowest slope estimates, and 4x4 and RWD vehicles have the lowest slope estimates among all wheel configurations.
+
+This may be because trucks and luxury vehicles may have lower supply in the used car market, and thus customers are willing to pay higher prices. Also, customers may be seeking additional utility and status from their purchase. 
+
+Luxury vehicles and sports cars provide the customer with social status, additional to the utility of a car, thus causing customers to be willing to pay a higher price for old vehicles. Also, customers may require trucks to accomplish certain tasks. Since they cannot easily find another option to accomplish their goals, they are willing to pay higher prices for a used truck.
+
+On the other hand, cars, SUVs and vans are easily replaceable, and have higher supply, and thus have a higher depreciation rate.
 
 Overall, there is some evidence in support of our analysis in this section, but the size and noise in the dataset makes it difficult to draw any definitive conclusions.
 
