@@ -1,23 +1,17 @@
 # JSC370Final
-Final Project JSC370
 
-I will be investigating Cars, and used car listings in GTA.
+## Read more about this project using the links below:
 
-Ideally, I would scrape the data myself from KijijiAutos, but I am unable to find a
-quick solution to do so, so I will use 2019 data to stand in for that.
+The website is live at [https://dungwoong.github.io/JSC370website/](https://dungwoong.github.io/JSC370website/).
 
-I then took some market price data for the cars from MotorTrend.com.
+Interactive visualizations can be found in the ["Methods and Results" tab](https://dungwoong.github.io/JSC370website/HW5.html).
 
-It's important to note that the market price data was scraped in 2023, whereas the listing
-data was scraped in 2019, so the cars in the listings may have
-depreciated in price since then.
+**\*\*Note that most of the interpretations on the website can be found in the report, so avoid them if you plan to read the report!!!\*\***
 
-The main questions are:
+To download the PDF report, click [here](https://github.com/dungwoong/JSC370Final/raw/main/FinalWriteup.pdf) ([view online](https://github.com/dungwoong/JSC370Final/blob/main/FinalWriteup.pdf))
 
-What is the relationship between mileage, year, wheel configuration, predicted market value, and car listing prices?
+The code for the report can be found under [FinalWriteup.Rmd](FinalWriteup.Rmd).
 
-# Files
+Code for the visualization and the final project website can be found [in this other repository](https://github.com/dungwoong/JSC370website). Read the README in that repository for more details.
 
- - [FinalWriteup.pdf](FinalWriteup.pdf) is the final writeup
- - [FinalWriteup.Rmd](FinalWriteup.Rmd) is the code for the final writeup
- - data is in the data/ folder
+The code for the website and writeup were separated for clarity.
