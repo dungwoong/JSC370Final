@@ -155,7 +155,7 @@ Note that the market price was obtained in 2023, and may be lower than the listi
 
 ## Data Wrangling
 
-First, I removed columns that I did not want to investigate. Most of these columns contain are difficult to investigate without further data collection, such as Carfax report links and vehicle identification numbers. I also chose not to use the "addresses" column, listing the address for each listing. I want to find general insights that can apply to people living in different provinces, thus I decided against investigating the effect of location on listing prices.
+First, I removed columns that I did not want to investigate. Most of these columns contain are difficult to investigate without further data collection, such as Carfax report links and vehicle identification numbers. I also chose not to use the "addresses" column. I want to find general insights that can apply to people living in different provinces, thus I decided against investigating the effect of location on listing prices.
 
 Below are the variables of interest in the dataset:
 
@@ -191,13 +191,35 @@ I used plotting to investigate the data. Overall, I generated four figures, give
 
 Figure 1 checks my assumptions that market price is highly correlated by listing price, and that it may vary proportionally to the price.
 
-The first plot shows that market price does seem highly correlated to the listing price, although the cone shape of the scatterplot suggests that the variance of listing price increases as market price increases.
+```{r}
+library(MASS)
+lms <- lmsreg(list_price ~ Market.Price.CAD, nsamp="exact", data=merged)
+# lms$coef
 
-I fitted a line for listing price vs market price using least median squares regression, which is less influenced by outliers compared to least mean squares regression. I got the equation
+p <- ggplot(merged, aes(x=Market.Price.CAD, y=list_price)) +
+  geom_point(size=0.4, aes(color=price_range, text=paste(
+  model_year, brand, model, "(", body_type, ")",
+  "<br>Market price (CAD):", Market.Price.CAD,
+  "<br>List price(CAD):", list_price
+))) +
+  geom_abline(intercept=lms$coef[1], slope=lms$coef[2]) + 
+  labs(title="Market price vs listing price, by price range",
+           x="MotorTrend market price(CAD)",
+           y="Listing price(CAD)",
+       color="Price range") +
+  scale_x_continuous(labels=scales::comma) +
+  theme_minimal()
+
+p
+```
+
+The first plot shows that market price seems highly correlated to the listing price.
+
+I fitted a line for listing price vs market price using least median squares regression, which is less influenced by outliers compared to least mean squares regression. The line has the equation
 
 Listing price(2019) = -2663.14 + 1.8 * Market price(2023)
 
-The model suggests perceived value of most used cars has almost halved since 2019, given the newer models that are being developed and the simple passing of time.
+The model suggests the value of most used cars has almost halved since 2019, given the newer models that are being developed and the simple passing of time.
 
 The cone shape of the plot suggests the variance in listing prices is associated with the market price of a car. It is common knowledge that factors affecting price such as depreciation and damage are all scaled to some base price of a new, accident-free vehicle(eg. an expensive vehicle would have expensive repairs, and the value would decay proportional to the original price)
 
@@ -210,7 +232,7 @@ tmp <- merged %>% mutate(logmp = log(Market.Price.CAD),
 p <- ggplot(tmp, aes(x=logmp, y=loglp)) +
   geom_point(size=0.4, aes(color=price_range)) +
   geom_smooth(method=lm, se=F, linewidth=0.2) + 
-  labs(title="Logged market price vs logged listing price, by price range",
+  labs(title="Market price vs listing price, by price range(Log scale)",
            x="Logged MotorTrend market price(CAD)",
            y="Logged listing price(CAD)",
        color="Price range") +
@@ -296,7 +318,7 @@ p <- merged %>% ggplot(aes(x=model_year,
 p
 ```
 
-The plot suggests that cars that provide utility, such as trucks, may observe lower decay rates compared to other, more "generic" vehicles. In addition, luxury vehicles and sports cars, which are often rear wheel drive, may observe lower decay rates due to the social status associated with the vehicle.
+The plot suggests that cars that provide utility, such as trucks, may observe lower decay rates compared to other, more "generic" vehicles such as cars and vans. In addition, luxury vehicles and sports cars, which are often rear wheel drive, may observe lower decay rates due to the social status associated with the vehicle.
 
 However, price decay is still quite similar between different vehicle classes, and the data has a lot of noise. I fit least median squares regression lines for price vs year, separated by wheel configuration and body type. The numerical results given below show that Coupes and pickup trucks have the lowest slope estimate, which supports our previous conclusion. However, Coupe has a negative coefficient which may be the result of outliers in the data, and we see that convertibles actually have the highest slope estimate, contradicting our earlier hypothesis.
 
@@ -409,6 +431,13 @@ targets <- log(test$list_price)
 preds_base <- mean(log(train$list_price))
 rmse_base <- sqrt(mean((targets - preds_base)**2))
 # rmse_base
+```
+
+```{r}
+# second baseline: simple linear model
+mod2 <- lm(log(list_price) ~ log(Market.Price.CAD), data=train)
+preds_base2 <- predict(mod2, test)
+rmse_base2 <- sqrt(mean((targets - preds_base2)**2))
 ```
 
 ```{r}
@@ -537,17 +566,23 @@ rmse_boost
 
 ### Models summary
 
-To compare the MSEs of these models, I used a baseline estimation of listing price that simply predicts the mean listing price in the training data as the listing price for all test observations(equivalent to fitting a linear model with no predictors).
+To compare the MSEs of these models, I constructed two baselines. 
+
+The first simply predicts the mean listing price in the training data as the listing price for all test observations(equivalent to fitting a linear model with no predictors).
+
+The second is a simple linear regression model using only logged market price to predict logged listing price. This would be equivalent to consulting online resources such as MotorTrend.com when deciding the value of a car.
 
 Below, we can compare the test MSEs of all the models.
 
 ```{r}
-rmses <- data.frame(model=c("Baseline", "Linear Model", "Random Forest", "Boosting"), MSE_Test=c(rmse_base, rmse_lm, rmse_tree, rmse_boost)**2)
+rmses <- data.frame(model=c("Mean", "Simple LR", "Multiple LR", "Random Forest", "Boosting"), MSE_Test=c(rmse_base, rmse_base2, rmse_lm, rmse_tree, rmse_boost)**2)
 kable(rmses, col.names=c("Model", "Test MSE")) %>% 
   kable_styling(latex_options = "HOLD_position")
 ```
 
-We see that the models significantly improve the prediction accuracy on the test dataset. In addition, advanced regression methods such as random forest regression and gradient boosting offer a sizeable improvement in performance over multiple linear regression. 
+We see that simple linear regression offers a considerable decrease in MSE compared to the base mean prediction. Also, the multiple linear model offers little improvement in MSE over the simple linear model. This suggests market price is an important predictor, likely as it takes into account many of the other predictors already when it is calculated.
+
+Advanced regression methods such as random forest regression and gradient boosting offer a sizeable improvement in performance over multiple linear regression. This suggests there may be nonlinear associations within the data. 
 
 Overall, the random forest gives the lowest test MSE. This may be because the random forest model is created to be robust to outliers. Given the small amount of training data used, this setup may be optimal compared to other models.
 
@@ -564,3 +599,5 @@ There are several limitations in this study. Firstly, the size of the dataset is
 In addition, the dataset is not recently collected, and thus I could only perform descriptive analysis. In the future, an updated dataset could be made, allowing more actionable conclusions to be drawn.
 
 Finally, Kijiji listings may not be representative of all used car listings, and the listing prices of the cars may not accurately reflect the final sale price of each car. This discrepancy could be investigated in the future.
+
+In future investigations, I have two general directions for this project. To make better inference, we could attempt to collect updated information to build a strong predictive model. To perform further analysis, we could attempt to understand how market price is calculated by collecting more information related to each car, and investigating relationships between those variables and the market price.
